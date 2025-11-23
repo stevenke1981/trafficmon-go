@@ -49,42 +49,34 @@ jobs:
         if [ "${{ matrix.platform }}" = "x86_64" ]; then
           upx --best ${{ env.IPK_NAME }}
         fi
-        
+
+    - name: Create IPK directory structure
+      run: |
         mkdir -p ipk_build/usr/bin
         cp ${{ env.IPK_NAME }} ipk_build/usr/bin/
         chmod +x ipk_build/usr/bin/${{ env.IPK_NAME }}
 
-    - name: Create IPK structure
+    - name: Create control file
       run: |
         mkdir -p ipk_build/CONTROL
+        VERSION=${GITHUB_REF#refs/tags/v}
         
-        # Create control file
-        cat > ipk_build/CONTROL/control << EOF
+        cat > ipk_build/CONTROL/control << EOL
 Package: ${{ env.IPK_NAME }}
-Version: ${GITHUB_REF#refs/tags/v}
+Version: $VERSION
 Architecture: ${{ matrix.platform }}
 Maintainer: GitHub Actions
-Description: Network traffic monitor
-EOF
+Description: Network traffic monitor written in Go
+EOL
 
-    - name: Create IPK package
+    - name: Build IPK package
       run: |
         cd ipk_build
-        
-        # Create data.tar.gz
         tar czf ../data.tar.gz usr
-        
-        # Create control.tar.gz  
         tar czf ../control.tar.gz CONTROL
-        
-        # Create debian-binary
         echo "2.0" > ../debian-binary
-        
-        # Create IPK
         cd ..
         ar r ${{ env.IPK_NAME }}-${{ matrix.platform }}.ipk debian-binary data.tar.gz control.tar.gz
-        
-        # Create checksum
         sha256sum ${{ env.IPK_NAME }}-${{ matrix.platform }}.ipk > ${{ env.IPK_NAME }}-${{ matrix.platform }}.ipk.sha256
 
     - name: Upload artifacts
