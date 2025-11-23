@@ -1,17 +1,22 @@
 # TrafficMon Go
 
-A network traffic monitoring tool rewritten in Go, inspired by the Rust version.
+![Build IPK](https://github.com/yourusername/trafficmon-go/workflows/Build%20IPK/badge.svg)
 
-## Features
+A network traffic monitoring tool rewritten in Go.
 
-- Real-time packet capture and analysis
-- Protocol statistics (TCP, UDP, ICMP, IPv4, IPv6)
-- Performance metrics
-- Easy to use CLI interface
+## Download IPK Packages
+
+Pre-built IPK packages are available in the [Releases](https://github.com/yourusername/trafficmon-go/releases) section.
+
+## Supported Architectures
+
+- x86_64
+- aarch64
+- armv7l
+- mipsel
 
 ## Installation
 
+### From IPK package
 ```bash
-git clone https://github.com/yourusername/trafficmon-go.git
-cd trafficmon-go
-go build -o trafficmon .
+opkg install trafficmon-go_*.ipk
