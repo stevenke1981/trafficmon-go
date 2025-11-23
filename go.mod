@@ -1,6 +1,6 @@
 module github.com/stevenke1981/trafficmon-go
 
-go 1.22
+go 1.22.0
 
 require (
     github.com/google/gopacket v1.1.19
