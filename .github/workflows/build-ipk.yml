@@ -1,4 +1,4 @@
-name: Build IPK Package
+name: Build IPK Package for x86_64 and MT7986
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
     branches: [ main, master ]
   release:
     types: [ published ]
-  workflow_dispatch:  # 允許手動觸發
+  workflow_dispatch:
 
 env:
   GO_VERSION: '1.21'
@@ -19,7 +19,13 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        arch: [x86_64, aarch64, armv7l, mipsel]
+        include:
+          - arch: x86_64
+            goarch: amd64
+            platform: x86_64
+          - arch: aarch64
+            goarch: arm64
+            platform: mt7986
     
     steps:
     - name: Checkout code
@@ -37,95 +43,142 @@ jobs:
           build-essential \
           libpcap-dev \
           upx \
-          fakeroot \
-          dpkg-dev
+          fakeroot
 
-    - name: Build for ${{ matrix.arch }}
+    - name: Build for ${{ matrix.arch }} (${{ matrix.platform }})
       run: |
-        # 設置交叉編譯環境
-        case "${{ matrix.arch }}" in
-          x86_64)
-            export GOARCH=amd64
-            export PLATFORM="x86_64"
-            ;;
-          aarch64)
-            export GOARCH=arm64
-            export PLATFORM="aarch64"
-            ;;
-          armv7l)
-            export GOARCH=arm
-            export GOARM=7
-            export PLATFORM="armv7l"
-            ;;
-          mipsel)
-            export GOARCH=mipsle
-            export PLATFORM="mipsel"
-            ;;
-        esac
-        
         # 編譯
-        GOOS=linux GOARCH=$GOARCH GOARM=$GOARM go build \
-          -ldflags="-s -w -X main.Version=${{ github.ref_name }}" \
-          -o ${IPK_NAME}_$PLATFORM \
+        GOOS=linux GOARCH=${{ matrix.goarch }} go build \
+          -ldflags="-s -w -X main.Version=${{ github.ref_name }} -X main.BuildDate=$(date -Iseconds)" \
+          -o ${IPK_NAME}_${{ matrix.platform }} \
           ./cmd/trafficmon
         
-        # 壓縮二進制檔案
-        upx --best ${IPK_NAME}_$PLATFORM
+        # 壓縮二進制檔案（僅 x86_64 使用 UPX）
+        if [ "${{ matrix.arch }}" = "x86_64" ]; then
+          upx --best ${IPK_NAME}_${{ matrix.platform }}
+        fi
+        
+        # 顯示檔案資訊
+        ls -lh ${IPK_NAME}_${{ matrix.platform }}
+        file ${IPK_NAME}_${{ matrix.platform }}
 
     - name: Create IPK package structure
       run: |
-        PLATFORM="${{ matrix.arch }}"
+        PLATFORM="${{ matrix.platform }}"
         PKG_DIR="ipk_build/${IPK_NAME}_${PLATFORM}"
         
         # 建立 IPK 目錄結構
         mkdir -p ${PKG_DIR}/usr/bin
         mkdir -p ${PKG_DIR}/usr/share/${IPK_NAME}
-        mkdir -p ${PKG_DIR}/etc/init.d
+        mkdir -p ${PKG_DIR}/etc/config
         mkdir -p ${PKG_DIR}/CONTROL
         
         # 複製二進制檔案
         cp ${IPK_NAME}_${PLATFORM} ${PKG_DIR}/usr/bin/${IPK_NAME}
         chmod +x ${PKG_DIR}/usr/bin/${IPK_NAME}
         
-        # 複組態檔案（如果有的話）
-        cp -r config/* ${PKG_DIR}/usr/share/${IPK_NAME}/ 2>/dev/null || true
+        # 建立預設設定檔（針對 MT7986 路由器的優化設定）
+        cat > ${PKG_DIR}/etc/config/trafficmon << EOF
+config trafficmon 'global'
+    option enabled '1'
+    option interface 'br-lan'
+    option interval '5'
+    option log_level 'info'
+    
+    # MT7986 特定優化
+    option buffer_size '16384'
+    option promiscuous '0'
+EOF
 
-    - name: Create control files
+    - name: Create OpenWrt control files
       run: |
-        PLATFORM="${{ matrix.arch }}"
+        PLATFORM="${{ matrix.platform }}"
         PKG_DIR="ipk_build/${IPK_NAME}_${PLATFORM}"
         VERSION="${GITHUB_REF#refs/tags/v}"
         
+        # 針對不同平台設定依賴
+        if [ "$PLATFORM" = "mt7986" ]; then
+          DEPENDS="libpcap, libc, libstdcpp"
+        else
+          DEPENDS="libpcap0, libc6"
+        fi
+        
         # 建立 control 檔案
         cat > ${PKG_DIR}/CONTROL/control << EOF
-        Package: ${IPK_NAME}
-        Version: ${VERSION}
-        Description: Network traffic monitor written in Go
-        Architecture: $PLATFORM
-        Maintainer: GitHub Actions
-        License: MIT
-        Source: https://github.com/${{ github.repository }}
-        EOF
+Package: ${IPK_NAME}
+Version: ${VERSION}
+Depends: ${DEPENDS}
+Architecture: $PLATFORM
+Maintainer: GitHub Actions
+Section: utils
+Priority: optional
+Description: Network traffic monitor written in Go
+  A high-performance network traffic monitoring tool optimized for
+  x86_64 and MT7986 platforms. Provides real-time traffic analysis
+  and statistics.
+Source: https://github.com/${{ github.repository }}
+License: MIT
+EOF
         
         # 建立 postinst 腳本
         cat > ${PKG_DIR}/CONTROL/postinst << EOF
-        #!/bin/sh
-        echo "TrafficMon Go installed successfully"
-        exit 0
-        EOF
+#!/bin/sh
+[ -n "\$IPKG_INSTROOT" ] || {
+    # 只在實際設備上執行
+    echo "TrafficMon Go installed successfully"
+    echo "Configure in /etc/config/trafficmon"
+    
+    # 確保二進制檔案有執行權限
+    chmod +x /usr/bin/trafficmon
+}
+exit 0
+EOF
         chmod +x ${PKG_DIR}/CONTROL/postinst
         
         # 建立 prerm 腳本
         cat > ${PKG_DIR}/CONTROL/prerm << EOF
-        #!/bin/sh
-        echo "Removing TrafficMon Go..."
-        exit 0
-        EOF
+#!/bin/sh
+[ -n "\$IPKG_INSTROOT" ] || {
+    echo "Stopping TrafficMon Go service..."
+    /etc/init.d/trafficmon stop 2>/dev/null || true
+    echo "Removing TrafficMon Go..."
+}
+exit 0
+EOF
         chmod +x ${PKG_DIR}/CONTROL/prerm
+
+    - name: Create init script for MT7986
+      if: matrix.platform == 'mt7986'
+      run: |
+        PKG_DIR="ipk_build/${IPK_NAME}_mt7986"
+        
+        mkdir -p ${PKG_DIR}/etc/init.d
+        cat > ${PKG_DIR}/etc/init.d/trafficmon << 'EOF'
+#!/bin/sh /etc/rc.common
+
+START=99
+STOP=10
+USE_PROCD=1
+
+start_service() {
+    procd_open_instance
+    procd_set_param command /usr/bin/trafficmon
+    procd_append_param command -d br-lan
+    procd_set_param stdout 1
+    procd_set_param stderr 1
+    procd_set_param respawn
+    procd_close_instance
+}
+
+stop_service() {
+    killall trafficmon 2>/dev/null
+}
+EOF
+        chmod +x ${PKG_DIR}/etc/init.d/trafficmon
 
     - name: Build IPK package
       run: |
-        PLATFORM="${{ matrix.arch }}"
+        PLATFORM="${{ matrix.platform }}"
         PKG_DIR="ipk_build/${IPK_NAME}_${PLATFORM}"
         
         # 進入套件目錄
@@ -144,15 +197,20 @@ jobs:
         cd ..
         ar r ${IPK_NAME}_${PLATFORM}.ipk debian-binary data.tar.gz control.tar.gz
         
+        # 計算雜湊值
+        sha256sum ${IPK_NAME}_${PLATFORM}.ipk > ${IPK_NAME}_${PLATFORM}.ipk.sha256
+        
         # 移動到 artifacts 目錄
         mkdir -p ../../ipk_artifacts
-        mv ${IPK_NAME}_${PLATFORM}.ipk ../../ipk_artifacts/
+        mv ${IPK_NAME}_${PLATFORM}.ipk* ../../ipk_artifacts/
 
     - name: Upload IPK artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: ipk-packages-${{ matrix.arch }}
-        path: ipk_artifacts/
+        name: ipk-${{ matrix.platform }}
+        path: |
+          ipk_artifacts/${IPK_NAME}_${{ matrix.platform }}.ipk
+          ipk_artifacts/${IPK_NAME}_${{ matrix.platform }}.ipk.sha256
         retention-days: 30
 
   release:
@@ -166,21 +224,44 @@ jobs:
       with:
         path: all_artifacts
 
+    - name: List artifacts
+      run: |
+        find all_artifacts -name "*.ipk" -o -name "*.sha256" | sort
+
     - name: Create release
       uses: softprops/action-gh-release@v1
       with:
         files: |
-          all_artifacts/ipk-packages-*/**.ipk
+          all_artifacts/ipk-*/*.ipk
+          all_artifacts/ipk-*/*.sha256
         body: |
-          Pre-built IPK packages for TrafficMon Go
+          # TrafficMon Go IPK Packages
           
-          ### Supported Architectures:
-          - x86_64
-          - aarch64
-          - armv7l
-          - mipsel
+          Pre-built IPK packages optimized for x86_64 and MT7986 platforms.
           
-          ### Installation:
+          ## Supported Platforms
+          
+          | Platform | Architecture | Use Case |
+          |----------|--------------|----------|
+          | x86_64 | AMD64 | Servers, x86 routers |
+          | mt7986 | ARM64 | MT7986-based routers |
+          
+          ## Installation
+          
+          ### For x86_64:
           ```bash
-          opkg install trafficmon-go_*.ipk
+          opkg install trafficmon-go_x86_64.ipk
           ```
+          
+          ### For MT7986 routers:
+          ```bash
+          opkg install trafficmon-go_mt7986.ipk
+          ```
+          
+          ## Configuration
+          
+          Edit `/etc/config/trafficmon` after installation.
+          
+          ## Source Code
+          
+          [GitHub Repository](https://github.com/${{ github.repository }})
