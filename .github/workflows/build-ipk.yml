@@ -1,8 +1,9 @@
-name: Build IPK Package
+name: Build and Release IPK Package
 
 on:
   push:
     branches: [ main, master ]
+    tags: [ 'v*' ]
   pull_request:
     branches: [ main, master ]
   workflow_dispatch:
@@ -12,8 +13,31 @@ env:
   IPK_NAME: 'trafficmon-go'
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
+    
+    - name: Download dependencies
+      run: go mod download
+    
+    - name: Run tests
+      run: go test ./... -v
+    
+    - name: Verify build
+      run: |
+        go build -o trafficmon ./cmd/trafficmon
+        ./trafficmon --version
+
   build:
     runs-on: ubuntu-latest
+    needs: test
     strategy:
       matrix:
         platform: [x86_64, mt7986]
@@ -32,11 +56,8 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y build-essential libpcap-dev upx
     
-    - name: Download and verify Go dependencies
-      run: |
-        go mod download
-        go mod verify
-        go mod tidy
+    - name: Download Go dependencies
+      run: go mod download
     
     - name: Build binary
       run: |
@@ -47,8 +68,8 @@ jobs:
         fi
         
         VERSION="${GITHUB_SHA:0:8}"
-        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-          VERSION="manual-$(date +%Y%m%d)"
+        if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+          VERSION="${GITHUB_REF#refs/tags/}"
         fi
         
         GOOS=linux GOARCH=$GOARCH CGO_ENABLED=0 go build \
@@ -71,12 +92,11 @@ jobs:
     - name: Create control file
       run: |
         mkdir -p ipk_build/CONTROL
-        VERSION="git-${GITHUB_SHA:0:8}"
-        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-          VERSION="manual-$(date +%Y%m%d)"
+        VERSION="${GITHUB_SHA:0:8}"
+        if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+          VERSION="${GITHUB_REF#refs/tags/}"
         fi
         
-        # 使用簡單的 echo 命令建立 control 檔案
         echo "Package: ${{ env.IPK_NAME }}" > ipk_build/CONTROL/control
         echo "Version: $VERSION" >> ipk_build/CONTROL/control
         echo "Architecture: ${{ matrix.platform }}" >> ipk_build/CONTROL/control
@@ -97,31 +117,83 @@ jobs:
         ls -la *.ipk*
         echo "========================="
     
-    - name: Upload artifacts
+    - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: ipk-${{ matrix.platform }}-${{ github.sha }}
+        name: ipk-${{ matrix.platform }}
         path: |
           ${{ env.IPK_NAME }}-${{ matrix.platform }}.ipk
           ${{ env.IPK_NAME }}-${{ matrix.platform }}.ipk.sha256
-        retention-days: 7
+        retention-days: 30
 
-  test:
+  release:
     runs-on: ubuntu-latest
+    needs: [test, build]
+    if: startsWith(github.ref, 'refs/tags/')
+    
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
     
-    - name: Setup Go
-      uses: actions/setup-go@v4
+    - name: Download all build artifacts
+      uses: actions/download-artifact@v4
       with:
-        go-version: ${{ env.GO_VERSION }}
+        path: artifacts
     
-    - name: Run tests
+    - name: Display artifacts structure
       run: |
-        go test ./... -v
+        echo "=== Artifacts Structure ==="
+        find artifacts -type f -name "*.ipk" -o -name "*.sha256" | sort
+        echo "==========================="
     
-    - name: Verify build
-      run: |
-        go build ./cmd/trafficmon
-        ./trafficmon --version
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          artifacts/ipk-x86_64/*.ipk
+          artifacts/ipk-x86_64/*.sha256
+          artifacts/ipk-mt7986/*.ipk
+          artifacts/ipk-mt7986/*.sha256
+        body: |
+          # 🚦 TrafficMon Go - Network Traffic Monitor
+          
+          ## 📦 IPK Packages
+          
+          Pre-built IPK packages for OpenWrt systems.
+          
+          ### Supported Platforms:
+          - **x86_64**: Standard x86_64 routers and servers
+          - **mt7986**: ARM64 routers with MT7986 chipset
+          
+          ### 📥 Installation:
+          ```bash
+          # For x86_64
+          opkg install trafficmon-go-x86_64.ipk
+          
+          # For MT7986
+          opkg install trafficmon-go-mt7986.ipk
+          ```
+          
+          ### 🚀 Usage:
+          ```bash
+          # Monitor default interface
+          trafficmon
+          
+          # Monitor specific interface
+          trafficmon --device br-lan
+          
+          # Show version
+          trafficmon --version
+          ```
+          
+          ## 🔧 Build Information
+          - **Version**: ${{ github.ref_name }}
+          - **Build Date**: $(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          - **Commit**: ${{ github.sha }}
+          
+          ## 📖 Source Code
+          [GitHub Repository](https://github.com/${{ github.repository }})
+        
+        draft: false
+        prerelease: false
+        generate_release_notes: true
