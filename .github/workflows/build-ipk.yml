@@ -77,15 +77,13 @@ jobs:
         cp ${IPK_NAME}_${PLATFORM} ${PKG_DIR}/usr/bin/${IPK_NAME}
         chmod +x ${PKG_DIR}/usr/bin/${IPK_NAME}
         
-        # 建立預設設定檔（針對 MT7986 路由器的優化設定）
-        cat > ${PKG_DIR}/etc/config/trafficmon << EOF
+        # 建立預設設定檔
+        cat > ${PKG_DIR}/etc/config/trafficmon << 'EOF'
 config trafficmon 'global'
     option enabled '1'
     option interface 'br-lan'
     option interval '5'
     option log_level 'info'
-    
-    # MT7986 特定優化
     option buffer_size '16384'
     option promiscuous '0'
 EOF
@@ -113,22 +111,16 @@ Maintainer: GitHub Actions
 Section: utils
 Priority: optional
 Description: Network traffic monitor written in Go
-  A high-performance network traffic monitoring tool optimized for
-  x86_64 and MT7986 platforms. Provides real-time traffic analysis
-  and statistics.
 Source: https://github.com/${{ github.repository }}
 License: MIT
 EOF
         
         # 建立 postinst 腳本
-        cat > ${PKG_DIR}/CONTROL/postinst << EOF
+        cat > ${PKG_DIR}/CONTROL/postinst << 'EOF'
 #!/bin/sh
-[ -n "\$IPKG_INSTROOT" ] || {
-    # 只在實際設備上執行
+[ -n "$IPKG_INSTROOT" ] || {
     echo "TrafficMon Go installed successfully"
     echo "Configure in /etc/config/trafficmon"
-    
-    # 確保二進制檔案有執行權限
     chmod +x /usr/bin/trafficmon
 }
 exit 0
@@ -136,9 +128,9 @@ EOF
         chmod +x ${PKG_DIR}/CONTROL/postinst
         
         # 建立 prerm 腳本
-        cat > ${PKG_DIR}/CONTROL/prerm << EOF
+        cat > ${PKG_DIR}/CONTROL/prerm << 'EOF'
 #!/bin/sh
-[ -n "\$IPKG_INSTROOT" ] || {
+[ -n "$IPKG_INSTROOT" ] || {
     echo "Stopping TrafficMon Go service..."
     /etc/init.d/trafficmon stop 2>/dev/null || true
     echo "Removing TrafficMon Go..."
@@ -232,36 +224,38 @@ EOF
       uses: softprops/action-gh-release@v1
       with:
         files: |
-          all_artifacts/ipk-*/*.ipk
-          all_artifacts/ipk-*/*.sha256
+          all_artifacts/ipk-x86_64/*.ipk
+          all_artifacts/ipk-x86_64/*.sha256
+          all_artifacts/ipk-mt7986/*.ipk
+          all_artifacts/ipk-mt7986/*.sha256
         body: |
           # TrafficMon Go IPK Packages
-          
+
           Pre-built IPK packages optimized for x86_64 and MT7986 platforms.
-          
+
           ## Supported Platforms
-          
+
           | Platform | Architecture | Use Case |
           |----------|--------------|----------|
           | x86_64 | AMD64 | Servers, x86 routers |
           | mt7986 | ARM64 | MT7986-based routers |
-          
+
           ## Installation
-          
+
           ### For x86_64:
           ```bash
           opkg install trafficmon-go_x86_64.ipk
           ```
-          
+
           ### For MT7986 routers:
           ```bash
           opkg install trafficmon-go_mt7986.ipk
           ```
-          
+
           ## Configuration
-          
+
           Edit `/etc/config/trafficmon` after installation.
-          
+
           ## Source Code
-          
+
           [GitHub Repository](https://github.com/${{ github.repository }})
