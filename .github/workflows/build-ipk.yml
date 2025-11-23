@@ -45,8 +45,8 @@ jobs:
           GOARCH="arm64"
         fi
         
-        GOOS=linux GOARCH=$GOARCH CGO_ENABLED=1 go build \
-          -ldflags="-s -w -X main.Version=${{ github.ref_name }}" \
+        GOOS=linux GOARCH=$GOARCH CGO_ENABLED=0 go build \
+          -ldflags="-s -w -X main.version=${{ github.ref_name }}" \
           -o ${{ env.IPK_NAME }} \
           ./cmd/trafficmon
         
