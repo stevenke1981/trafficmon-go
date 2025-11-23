@@ -2,10 +2,9 @@ name: Build IPK Package
 
 on:
   push:
-    tags:
-      - 'v*'
-  release:
-    types: [published]
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
   workflow_dispatch:
 
 env:
@@ -47,14 +46,22 @@ jobs:
           GOARCH="arm64"
         fi
         
+        # 使用 commit SHA 作為版本號
+        VERSION="${GITHUB_SHA:0:8}"
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          VERSION="manual-$(date +%Y%m%d)"
+        fi
+        
         GOOS=linux GOARCH=$GOARCH CGO_ENABLED=0 go build \
-          -ldflags="-s -w -X main.Version=${{ github.ref_name }}" \
+          -ldflags="-s -w -X main.Version=$VERSION" \
           -o ${{ env.IPK_NAME }} \
           ./cmd/trafficmon
         
         if [ "${{ matrix.platform }}" = "x86_64" ]; then
           upx --best ${{ env.IPK_NAME }}
         fi
+        
+        echo "Built version: $VERSION for ${{ matrix.platform }}"
     
     - name: Create IPK directory structure
       run: |
@@ -65,14 +72,15 @@ jobs:
     - name: Create control file
       run: |
         mkdir -p ipk_build/CONTROL
-        VERSION="${GITHUB_REF#refs/tags/v}"
-        if [ -z "$VERSION" ] || [ "$VERSION" = "$GITHUB_REF" ]; then
-          VERSION="0.0.0"
+        # 使用日期和 commit SHA 作為版本號
+        VERSION="git-${GITHUB_SHA:0:8}"
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          VERSION="manual-$(date +%Y%m%d)"
         fi
         
         cat > ipk_build/CONTROL/control << EOL
 Package: ${{ env.IPK_NAME }}
-Version: ${VERSION}
+Version: $VERSION
 Architecture: ${{ matrix.platform }}
 Maintainer: GitHub Actions
 Description: Network traffic monitor written in Go
@@ -87,28 +95,37 @@ EOL
         cd ..
         ar r ${{ env.IPK_NAME }}-${{ matrix.platform }}.ipk debian-binary data.tar.gz control.tar.gz
         sha256sum ${{ env.IPK_NAME }}-${{ matrix.platform }}.ipk > ${{ env.IPK_NAME }}-${{ matrix.platform }}.ipk.sha256
+        
+        # 顯示建置結果
+        echo "=== Built IPK Package ==="
         ls -la *.ipk*
+        echo "========================="
     
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: ipk-${{ matrix.platform }}
+        name: ipk-${{ matrix.platform }}-${{ github.sha }}
         path: |
           ${{ env.IPK_NAME }}-${{ matrix.platform }}.ipk
           ${{ env.IPK_NAME }}-${{ matrix.platform }}.ipk.sha256
+        retention-days: 7
 
-  create-release:
-    needs: build
+  test:
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
-    
     steps:
-    - name: Download artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: artifacts
+    - name: Checkout code
+      uses: actions/checkout@v4
     
-    - name: Create release
-      uses: softprops/action-gh-release@v1
+    - name: Setup Go
+      uses: actions/setup-go@v4
       with:
-        files: artifacts/**/*.ipk*
+        go-version: ${{ env.GO_VERSION }}
+    
+    - name: Run tests
+      run: |
+        go test ./... -v
+    
+    - name: Verify build
+      run: |
+        go build ./cmd/trafficmon
+        ./trafficmon --version
