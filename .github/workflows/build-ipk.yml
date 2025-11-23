@@ -1,0 +1,186 @@
+name: Build IPK Package
+
+on:
+  push:
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main, master ]
+  release:
+    types: [ published ]
+  workflow_dispatch:  # 允許手動觸發
+
+env:
+  GO_VERSION: '1.21'
+  IPK_NAME: 'trafficmon-go'
+
+jobs:
+  build-ipk:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [x86_64, aarch64, armv7l, mipsel]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          libpcap-dev \
+          upx \
+          fakeroot \
+          dpkg-dev
+
+    - name: Build for ${{ matrix.arch }}
+      run: |
+        # 設置交叉編譯環境
+        case "${{ matrix.arch }}" in
+          x86_64)
+            export GOARCH=amd64
+            export PLATFORM="x86_64"
+            ;;
+          aarch64)
+            export GOARCH=arm64
+            export PLATFORM="aarch64"
+            ;;
+          armv7l)
+            export GOARCH=arm
+            export GOARM=7
+            export PLATFORM="armv7l"
+            ;;
+          mipsel)
+            export GOARCH=mipsle
+            export PLATFORM="mipsel"
+            ;;
+        esac
+        
+        # 編譯
+        GOOS=linux GOARCH=$GOARCH GOARM=$GOARM go build \
+          -ldflags="-s -w -X main.Version=${{ github.ref_name }}" \
+          -o ${IPK_NAME}_$PLATFORM \
+          ./cmd/trafficmon
+        
+        # 壓縮二進制檔案
+        upx --best ${IPK_NAME}_$PLATFORM
+
+    - name: Create IPK package structure
+      run: |
+        PLATFORM="${{ matrix.arch }}"
+        PKG_DIR="ipk_build/${IPK_NAME}_${PLATFORM}"
+        
+        # 建立 IPK 目錄結構
+        mkdir -p ${PKG_DIR}/usr/bin
+        mkdir -p ${PKG_DIR}/usr/share/${IPK_NAME}
+        mkdir -p ${PKG_DIR}/etc/init.d
+        mkdir -p ${PKG_DIR}/CONTROL
+        
+        # 複製二進制檔案
+        cp ${IPK_NAME}_${PLATFORM} ${PKG_DIR}/usr/bin/${IPK_NAME}
+        chmod +x ${PKG_DIR}/usr/bin/${IPK_NAME}
+        
+        # 複組態檔案（如果有的話）
+        cp -r config/* ${PKG_DIR}/usr/share/${IPK_NAME}/ 2>/dev/null || true
+
+    - name: Create control files
+      run: |
+        PLATFORM="${{ matrix.arch }}"
+        PKG_DIR="ipk_build/${IPK_NAME}_${PLATFORM}"
+        VERSION="${GITHUB_REF#refs/tags/v}"
+        
+        # 建立 control 檔案
+        cat > ${PKG_DIR}/CONTROL/control << EOF
+        Package: ${IPK_NAME}
+        Version: ${VERSION}
+        Description: Network traffic monitor written in Go
+        Architecture: $PLATFORM
+        Maintainer: GitHub Actions
+        License: MIT
+        Source: https://github.com/${{ github.repository }}
+        EOF
+        
+        # 建立 postinst 腳本
+        cat > ${PKG_DIR}/CONTROL/postinst << EOF
+        #!/bin/sh
+        echo "TrafficMon Go installed successfully"
+        exit 0
+        EOF
+        chmod +x ${PKG_DIR}/CONTROL/postinst
+        
+        # 建立 prerm 腳本
+        cat > ${PKG_DIR}/CONTROL/prerm << EOF
+        #!/bin/sh
+        echo "Removing TrafficMon Go..."
+        exit 0
+        EOF
+        chmod +x ${PKG_DIR}/CONTROL/prerm
+
+    - name: Build IPK package
+      run: |
+        PLATFORM="${{ matrix.arch }}"
+        PKG_DIR="ipk_build/${IPK_NAME}_${PLATFORM}"
+        
+        # 進入套件目錄
+        cd ${PKG_DIR}
+        
+        # 建立 data.tar.gz
+        tar czf ../data.tar.gz usr etc
+        
+        # 建立 control.tar.gz
+        tar czf ../control.tar.gz CONTROL
+        
+        # 建立 debian-binary
+        echo "2.0" > ../debian-binary
+        
+        # 建立 IPK 檔案
+        cd ..
+        ar r ${IPK_NAME}_${PLATFORM}.ipk debian-binary data.tar.gz control.tar.gz
+        
+        # 移動到 artifacts 目錄
+        mkdir -p ../../ipk_artifacts
+        mv ${IPK_NAME}_${PLATFORM}.ipk ../../ipk_artifacts/
+
+    - name: Upload IPK artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ipk-packages-${{ matrix.arch }}
+        path: ipk_artifacts/
+        retention-days: 30
+
+  release:
+    needs: build-ipk
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: all_artifacts
+
+    - name: Create release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          all_artifacts/ipk-packages-*/**.ipk
+        body: |
+          Pre-built IPK packages for TrafficMon Go
+          
+          ### Supported Architectures:
+          - x86_64
+          - aarch64
+          - armv7l
+          - mipsel
+          
+          ### Installation:
+          ```bash
+          opkg install trafficmon-go_*.ipk
+          ```
