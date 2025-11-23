@@ -12,14 +12,16 @@ import (
 )
 
 var (
-    device string
+    device  string
+    version = "dev" // 在編譯時被覆蓋
 )
 
 func main() {
     var rootCmd = &cobra.Command{
-        Use:   "trafficmon",
-        Short: "A network traffic monitor written in Go",
-        Long:  `A real-time network traffic monitoring tool similar to the Rust version but implemented in Go`,
+        Use:     "trafficmon",
+        Version: version,
+        Short:   "A network traffic monitor written in Go",
+        Long:    `A real-time network traffic monitoring tool similar to the Rust version but implemented in Go`,
         Run: func(cmd *cobra.Command, args []string) {
             startMonitor()
         },
@@ -33,6 +35,7 @@ func main() {
 }
 
 func startMonitor() {
+    fmt.Printf("TrafficMon Go %s\n", version)
     monitor := monitor.NewTrafficMonitor(device)
     
     // 處理信號，優雅退出
