@@ -1,5 +1,4 @@
 name: Build IPK Package
-
 on:
   push:
     tags:
@@ -22,17 +21,17 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-
+    
     - name: Setup Go
       uses: actions/setup-go@v4
       with:
         go-version: ${{ env.GO_VERSION }}
-
+    
     - name: Install dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y build-essential libpcap-dev upx
-
+    
     - name: Build binary
       run: |
         if [ "${{ matrix.platform }}" = "x86_64" ]; then
@@ -49,26 +48,29 @@ jobs:
         if [ "${{ matrix.platform }}" = "x86_64" ]; then
           upx --best ${{ env.IPK_NAME }}
         fi
-
+    
     - name: Create IPK directory structure
       run: |
         mkdir -p ipk_build/usr/bin
         cp ${{ env.IPK_NAME }} ipk_build/usr/bin/
         chmod +x ipk_build/usr/bin/${{ env.IPK_NAME }}
-
+    
     - name: Create control file
       run: |
         mkdir -p ipk_build/CONTROL
-        VERSION=${GITHUB_REF#refs/tags/v}
+        VERSION="${GITHUB_REF_NAME#v}"
+        if [ -z "$VERSION" ]; then
+          VERSION="0.0.0"
+        fi
         
         cat > ipk_build/CONTROL/control << EOL
-Package: ${{ env.IPK_NAME }}
-Version: $VERSION
-Architecture: ${{ matrix.platform }}
-Maintainer: GitHub Actions
-Description: Network traffic monitor written in Go
-EOL
-
+        Package: ${{ env.IPK_NAME }}
+        Version: ${VERSION}
+        Architecture: ${{ matrix.platform }}
+        Maintainer: GitHub Actions
+        Description: Network traffic monitor written in Go
+        EOL
+    
     - name: Build IPK package
       run: |
         cd ipk_build
@@ -78,7 +80,7 @@ EOL
         cd ..
         ar r ${{ env.IPK_NAME }}-${{ matrix.platform }}.ipk debian-binary data.tar.gz control.tar.gz
         sha256sum ${{ env.IPK_NAME }}-${{ matrix.platform }}.ipk > ${{ env.IPK_NAME }}-${{ matrix.platform }}.ipk.sha256
-
+    
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
@@ -97,8 +99,8 @@ EOL
       uses: actions/download-artifact@v4
       with:
         path: artifacts
-
+    
     - name: Create release
       uses: softprops/action-gh-release@v1
       with:
-        files: artifacts/**/*.ipk
+        files: artifacts/**/*.ipk*
