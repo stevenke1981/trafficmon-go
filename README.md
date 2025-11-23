@@ -1,20 +1,30 @@
 # TrafficMon Go
 
-![Build IPK](https://github.com/yourusername/trafficmon-go/workflows/Build%20IPK%20for%20x86_64%20and%20MT7986/badge.svg)
+![Build Status](https://github.com/yourusername/trafficmon-go/workflows/Build%20IPK%20Package/badge.svg)
 
-A network traffic monitoring tool optimized for x86_64 and MT7986 platforms.
+Network traffic monitor for x86_64 and MT7986 platforms.
 
-## Supported Platforms
+## Features
 
-- **x86_64**: Standard x86_64 systems and routers
-- **MT7986**: ARM64 routers with MT7986 chipset (Xiaomi, GL.iNet, etc.)
+- 🔄 **Auto-build** on every code change
+- 📦 **IPK packages** for OpenWrt
+- 🏗️ **Multi-architecture** support (x86_64, MT7986 ARM64)
+- ⚡ **Fast compilation** with Go
 
 ## Download
 
-Pre-built IPK packages are available in the [Releases](https://github.com/yourusername/trafficmon-go/releases) section.
+Latest IPK packages are available in the [GitHub Actions artifacts](https://github.com/yourusername/trafficmon-go/actions).
+
+### Manual Download:
+1. Go to [Actions](https://github.com/yourusername/trafficmon-go/actions)
+2. Click on the latest successful workflow run
+3. Download the IPK artifacts for your platform
 
 ## Installation
 
-### For x86_64 OpenWrt:
 ```bash
-opkg install trafficmon-go_x86_64.ipk
+# For x86_64 routers
+opkg install trafficmon-go-x86_64.ipk
+
+# For MT7986 routers (ARM64)
+opkg install trafficmon-go-mt7986.ipk
