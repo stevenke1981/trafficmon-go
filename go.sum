@@ -1,0 +1,12 @@
+github.com/gofrs/flock v0.8.1 h1:HFlPcBOUFGC3gQA3LL9dHSe5/zkuwaP0jm8myof4us8=
+github.com/gofrs/flock v0.8.1/go.mod h1:23r3EHJjN6HLt7M8gHn41Z6zK3S9U8xsOeZzahyi0u4=
+github.com/google/gopacket v1.1.19 h1:b3wrRHtZGUlrBkSezTnnh3O7ODN8auSv/wUYbr3i5z4=
+github.com/google/gopacket v1.1.19/go.mod h1:mO8U9KxNB2E5GYTWxsMB21DS1jkFiscfDjuVfK4Po4U=
+github.com/inconshreveable/mousetrap v1.1.0 h1:JL5NdGIQL1i3AJBPvjKkEWpLqkK8Lk1xvBVqDUDPmAo=
+github.com/inconshreveable/mousetrap v1.1.0/go.mod h1:Y2XvWYqnqfDOoD35AjOF9HXYsVdqA0jTYfjU61yNnjc=
+github.com/spf13/cobra v1.8.0 h1:0KSiY1qNIcEWhz5Qa0cD3V3eNRi1ZVzcfxTka1eXhH8=
+github.com/spf13/cobra v1.8.0/go.mod h1:D2amziRgZMQ36Es6d1n/OZpOSq2zu9HdpwMKtSXuE2k=
+github.com/spf13/pflag v1.0.5 h1:C3umYQBo9hk4TQtldriH9CNqm6VVNXrKXU4dVnvy+80=
+github.com/spf13/pflag v1.0.5/go.mod h1:G0CQjN3lNHT4S3vZTWeiaKz33cCim0M3g8zF6u7EdeU=
+golang.org/x/sys v0.18.0 h1:KtlhvfbNhZqSAjRGOmQij2J9qvLsxs6Y/EpCqUOI14g=
+golang.org/x/sys v0.18.0/go.mod h1:/PA9yWVkAqdLzIctCUtqE3OI0n5sRR4d8sRIeGvN3MM=
