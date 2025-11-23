@@ -1,4 +1,5 @@
 name: Build IPK Package
+
 on:
   push:
     tags:
@@ -32,10 +33,11 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y build-essential libpcap-dev upx
     
-    - name: Download Go dependencies
+    - name: Download and verify Go dependencies
       run: |
         go mod download
         go mod verify
+        go mod tidy
     
     - name: Build binary
       run: |
@@ -46,7 +48,7 @@ jobs:
         fi
         
         GOOS=linux GOARCH=$GOARCH CGO_ENABLED=0 go build \
-          -ldflags="-s -w -X main.version=${{ github.ref_name }}" \
+          -ldflags="-s -w -X main.Version=${{ github.ref_name }}" \
           -o ${{ env.IPK_NAME }} \
           ./cmd/trafficmon
         
@@ -63,18 +65,18 @@ jobs:
     - name: Create control file
       run: |
         mkdir -p ipk_build/CONTROL
-        VERSION="${GITHUB_REF_NAME#v}"
-        if [ -z "$VERSION" ]; then
+        VERSION="${GITHUB_REF#refs/tags/v}"
+        if [ -z "$VERSION" ] || [ "$VERSION" = "$GITHUB_REF" ]; then
           VERSION="0.0.0"
         fi
         
         cat > ipk_build/CONTROL/control << EOL
-        Package: ${{ env.IPK_NAME }}
-        Version: ${VERSION}
-        Architecture: ${{ matrix.platform }}
-        Maintainer: GitHub Actions
-        Description: Network traffic monitor written in Go
-        EOL
+Package: ${{ env.IPK_NAME }}
+Version: ${VERSION}
+Architecture: ${{ matrix.platform }}
+Maintainer: GitHub Actions
+Description: Network traffic monitor written in Go
+EOL
     
     - name: Build IPK package
       run: |
@@ -85,6 +87,7 @@ jobs:
         cd ..
         ar r ${{ env.IPK_NAME }}-${{ matrix.platform }}.ipk debian-binary data.tar.gz control.tar.gz
         sha256sum ${{ env.IPK_NAME }}-${{ matrix.platform }}.ipk > ${{ env.IPK_NAME }}-${{ matrix.platform }}.ipk.sha256
+        ls -la *.ipk*
     
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
