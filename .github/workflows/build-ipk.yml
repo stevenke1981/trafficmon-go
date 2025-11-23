@@ -46,7 +46,6 @@ jobs:
           GOARCH="arm64"
         fi
         
-        # 使用 commit SHA 作為版本號
         VERSION="${GITHUB_SHA:0:8}"
         if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
           VERSION="manual-$(date +%Y%m%d)"
@@ -72,19 +71,17 @@ jobs:
     - name: Create control file
       run: |
         mkdir -p ipk_build/CONTROL
-        # 使用日期和 commit SHA 作為版本號
         VERSION="git-${GITHUB_SHA:0:8}"
         if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
           VERSION="manual-$(date +%Y%m%d)"
         fi
         
-        cat > ipk_build/CONTROL/control << EOL
-Package: ${{ env.IPK_NAME }}
-Version: $VERSION
-Architecture: ${{ matrix.platform }}
-Maintainer: GitHub Actions
-Description: Network traffic monitor written in Go
-EOL
+        # 使用簡單的 echo 命令建立 control 檔案
+        echo "Package: ${{ env.IPK_NAME }}" > ipk_build/CONTROL/control
+        echo "Version: $VERSION" >> ipk_build/CONTROL/control
+        echo "Architecture: ${{ matrix.platform }}" >> ipk_build/CONTROL/control
+        echo "Maintainer: GitHub Actions" >> ipk_build/CONTROL/control
+        echo "Description: Network traffic monitor written in Go" >> ipk_build/CONTROL/control
     
     - name: Build IPK package
       run: |
@@ -96,7 +93,6 @@ EOL
         ar r ${{ env.IPK_NAME }}-${{ matrix.platform }}.ipk debian-binary data.tar.gz control.tar.gz
         sha256sum ${{ env.IPK_NAME }}-${{ matrix.platform }}.ipk > ${{ env.IPK_NAME }}-${{ matrix.platform }}.ipk.sha256
         
-        # 顯示建置結果
         echo "=== Built IPK Package ==="
         ls -la *.ipk*
         echo "========================="
