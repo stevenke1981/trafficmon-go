@@ -32,6 +32,11 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y build-essential libpcap-dev upx
     
+    - name: Download Go dependencies
+      run: |
+        go mod download
+        go mod verify
+    
     - name: Build binary
       run: |
         if [ "${{ matrix.platform }}" = "x86_64" ]; then
@@ -40,7 +45,7 @@ jobs:
           GOARCH="arm64"
         fi
         
-        GOOS=linux GOARCH=$GOARCH go build \
+        GOOS=linux GOARCH=$GOARCH CGO_ENABLED=1 go build \
           -ldflags="-s -w -X main.Version=${{ github.ref_name }}" \
           -o ${{ env.IPK_NAME }} \
           ./cmd/trafficmon
