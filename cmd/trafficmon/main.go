@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// 注意：變數名稱必須是大寫開頭才能被外部訪問
+// Version 會在編譯時通過 -ldflags 設置
 var Version = "dev"
 
 func main() {
@@ -21,9 +21,9 @@ func main() {
 		Version: Version,
 		Short:   "Network traffic monitor",
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Printf("TrafficMon %s\n", Version)
-			fmt.Printf("Monitoring interface: %s\n", device)
-			fmt.Println("Press Ctrl+C to stop")
+			fmt.Printf("🚦 TrafficMon %s\n", Version)
+			fmt.Printf("📡 Monitoring interface: %s\n", device)
+			fmt.Println("⏹️  Press Ctrl+C to stop")
 
 			sigCh := make(chan os.Signal, 1)
 			signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
@@ -35,20 +35,20 @@ func main() {
 			for {
 				select {
 				case <-sigCh:
-					fmt.Println("\nShutting down...")
+					fmt.Println("\n🛑 Shutting down...")
 					return
 				case <-ticker.C:
 					counter++
-					fmt.Printf("Running... check #%d on %s\n", counter, device)
+					fmt.Printf("✅ Running... check #%d on %s\n", counter, device)
 				}
 			}
 		},
 	}
 
-	rootCmd.Flags().StringVarP(&device, "device", "d", "eth0", "Network interface")
+	rootCmd.Flags().StringVarP(&device, "device", "d", "eth0", "Network interface to monitor")
 	
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Printf("Error: %v\n", err)
+		fmt.Printf("❌ Error: %v\n", err)
 		os.Exit(1)
 	}
 }
