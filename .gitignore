@@ -1,1 +1,26 @@
+# Binaries
+trafficmon
+trafficmon-go
+*.exe
+*.dll
 
+# Dependency directories
+vendor/
+node_modules/
+
+# Go files
+go.sum
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Build artifacts
+dist/
+build/
+
+# Config files (optional)
+config.yaml
+*.env
